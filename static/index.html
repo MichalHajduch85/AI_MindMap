@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MindMap AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- Mobile Header -->
+    <div class="mobile-header">
+        <div class="logo">
+            <span>🧠</span>
+            <span>MindMap AI</span>
+        </div>
+        <button class="menu-toggle" id="menuToggle">☰</button>
+    </div>
+
+    <!-- Desktop Header (hidden on mobile) -->
+    <div class="desktop-header" style="display: none;">
+        <div class="logo">
+            <span>🧠</span>
+            <span>MindMap AI</span>
+        </div>
+        <div class="desktop-search">
+            <div class="search-container">
+                <input type="text" class="search-input" id="topicInput" 
+                       placeholder="Enter your topic...">
+                <button class="search-btn" id="searchBtn">🔍</button>
+            </div>
+        </div>
+        <button class="clear-btn" id="clearBtn">Clear</button>
+    </div>
+
+    <!-- Mobile Search -->
+    <div class="search-section">
+        <div class="search-container">
+            <input type="text" class="search-input" id="mobileTopicInput" 
+                   placeholder="Enter your topic to create mindmap...">
+            <button class="search-btn" id="mobileSearchBtn">🔍</button>
+        </div>
+    </div>
+
+    <!-- Side Menu -->
+    <div class="side-menu" id="sideMenu">
+        <div class="menu-header">
+            <h3>Menu</h3>
+            <button class="menu-close" id="menuClose">✕</button>
+        </div>
+
+        <div class="menu-section">
+            <div class="menu-title">Example Topics</div>
+            <div class="topics-grid">
+                <div class="topic-item">Learn Python</div>
+                <div class="topic-item">Build Website</div>
+                <div class="topic-item">Start Business</div>
+                <div class="topic-item">Plan Trip</div>
+                <div class="topic-item">Learn Guitar</div>
+                <div class="topic-item">Get Fit</div>
+            </div>
+        </div>
+
+        <div class="menu-section">
+            <div class="menu-title">Export</div>
+            <div class="export-grid">
+                <button class="export-btn" id="exportTxtBtn">📄 Export TXT</button>
+                <button class="export-btn" id="exportJsonBtn">📋 Export JSON</button>
+            </div>
+        </div>
+
+        <div class="menu-section">
+            <div class="menu-title">Statistics</div>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-number" id="totalNodes">0</span>
+                    <div class="stat-label">Nodes</div>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number" id="maxLevel">0</span>
+                    <div class="stat-label">Levels</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Menu Overlay -->
+    <div class="menu-overlay" id="menuOverlay"></div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="content-area">
+            <h1 class="content-title" id="contentTitle">Ready to Create Your MindMap</h1>
+            
+            <div class="mindmap-canvas" id="mindmapCanvas">
+                <div class="empty-state">
+                    <h3 class="empty-title">🎯 Start Your AI MindMap</h3>
+                    <p>Enter a topic above to begin creating your mindmap</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global Variables
+        const API_BASE_URL = '/api/web';
+        let mindmapData = [];
+        let nodeIdCounter = 1;
+        let isApiConnected = false;
+    
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 MindMap AI starting...');
+            
+            setupMenuFunctionality();
+            setupSearchSync();
+            setupEventListeners();
+            checkApiStatus();
+            updateStats();
+        });
+    
+        function setupMenuFunctionality() {
+            const menuToggle = document.getElementById('menuToggle');
+            const menuClose = document.getElementById('menuClose');
+            const sideMenu = document.getElementById('sideMenu');
+            const menuOverlay = document.getElementById('menuOverlay');
+    
+            function openMenu() {
+                sideMenu.classList.add('open');
+                menuOverlay.classList.add('active');
+            }
+    
+            function closeMenu() {
+                sideMenu.classList.remove('open');
+                menuOverlay.classList.remove('active');
+            }
+    
+            if (menuToggle) menuToggle.addEventListener('click', openMenu);
+            if (menuClose) menuClose.addEventListener('click', closeMenu);
+            if (menuOverlay) menuOverlay.addEventListener('click', closeMenu);
+        }
+    
+        function setupSearchSync() {
+            // Mobile search
+            const mobileInput = document.getElementById('mobileTopicInput');
+            const mobileSearchBtn = document.getElementById('mobileSearchBtn');
+            
+            if (mobileInput && mobileSearchBtn) {
+                mobileSearchBtn.addEventListener('click', () => {
+                    createMindmapFromMobile();
+                });
+                
+                mobileInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        createMindmapFromMobile();
+                    }
+                });
+            }
+    
+            // Desktop search (if exists)
+            const desktopInput = document.getElementById('topicInput');
+            const desktopSearchBtn = document.getElementById('searchBtn');
+            
+            if (desktopInput && desktopSearchBtn) {
+                desktopSearchBtn.addEventListener('click', createMindmapFromDesktop);
+                desktopInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        createMindmapFromDesktop();
+                    }
+                });
+            }
+        }
+    
+        function setupEventListeners() {
+            // Export functionality
+            const exportTxtBtn = document.getElementById('exportTxtBtn');
+            const exportJsonBtn = document.getElementById('exportJsonBtn');
+            const clearBtn = document.getElementById('clearBtn');
+    
+            if (exportTxtBtn) {
+                exportTxtBtn.addEventListener('click', exportAsTxt);
+            }
+    
+            if (exportJsonBtn) {
+                exportJsonBtn.addEventListener('click', exportAsJson);
+            }
+    
+            if (clearBtn) {
+                clearBtn.addEventListener('click', clearMindmap);
+            }
+    
+            // Example topics
+            const exampleTopics = document.querySelectorAll('.topic-item');
+            exampleTopics.forEach(function(topic) {
+                topic.addEventListener('click', function() {
+                    const topicText = this.textContent;
+                    const mobileInput = document.getElementById('mobileTopicInput');
+                    const desktopInput = document.getElementById('topicInput');
+                    
+                    if (mobileInput) mobileInput.value = topicText;
+                    if (desktopInput) desktopInput.value = topicText;
+                    
+                    createMindmap(topicText);
+                    closeMenu(); // Close menu after selection
+                });
+            });
+        }
+    
+        function createMindmapFromMobile() {
+            const mobileInput = document.getElementById('mobileTopicInput');
+            if (mobileInput) {
+                createMindmap(mobileInput.value.trim());
+            }
+        }
+    
+        function createMindmapFromDesktop() {
+            const desktopInput = document.getElementById('topicInput');
+            if (desktopInput) {
+                createMindmap(desktopInput.value.trim());
+            }
+        }
+    
+        function createMindmap(topic) {
+            if (!topic) {
+                showMessage('Please enter a topic to create your mindmap', 'error');
+                return;
+            }
+    
+            console.log('🌟 Creating mindmap for:', topic);
+    
+            // Clear previous content
+            const canvas = document.getElementById('mindmapCanvas');
+            if (canvas) {
+                canvas.innerHTML = '';
+            }
+    
+            const rootNode = {
+                id: nodeIdCounter++,
+                content: topic,
+                level: 0,
+                children: [],
+                steps: null,
+                analysis: null
+            };
+    
+            mindmapData = [rootNode];
+            
+            const contentTitle = document.getElementById('contentTitle');
+            if (contentTitle) {
+                contentTitle.textContent = topic;
+            }
+            
+            renderMindmap();
+            updateStats();
+            showMessage('Created mindmap for: ' + topic, 'success');
+        }
+    
+        function renderMindmap() {
+            const canvas = document.getElementById('mindmapCanvas');
+            if (!canvas) return;
+    
+            canvas.innerHTML = '';
+    
+            if (mindmapData.length === 0) {
+                canvas.innerHTML = 
+                    '<div class="empty-state">' +
+                        '<h3 class="empty-title">🎯 Start Your AI MindMap</h3>' +
+                        '<p>Enter a topic above to begin creating your mindmap</p>' +
+                    '</div>';
+                return;
+            }
+    
+            mindmapData.forEach(function(rootNode) {
+                renderNode(rootNode, canvas);
+            });
+        }
+    
+        function renderNode(node, container) {
+            const nodeElement = document.createElement('div');
+            nodeElement.className = 'mindmap-node level-' + Math.min(node.level, 4);
+            
+            let actionsHTML = '';
+            if (node.level < 5) {
+                actionsHTML += '<button class="node-btn btn-success" onclick="expandNode(' + node.id + ')">🌱 Expand</button>';
+            }
+            actionsHTML += '<button class="node-btn btn-warning" onclick="generateSteps(' + node.id + ')">📋 Steps</button>';
+            actionsHTML += '<button class="node-btn btn-info" onclick="analyzeNode(' + node.id + ')">🔍 Analyze</button>';
+            if (node.children.length > 0) {
+                actionsHTML += '<button class="node-btn btn-danger" onclick="collapseNode(' + node.id + ')">➖ Collapse</button>';
+            }
+            
+            nodeElement.innerHTML = 
+                '<div class="node-header">' +
+                    '<div class="node-title">' + node.content + '</div>' +
+                    '<div class="node-level">Level ' + node.level + '</div>' +
+                '</div>' +
+                '<div class="node-actions">' + actionsHTML + '</div>' +
+                '<div class="node-content">' +
+                    '<div id="steps-' + node.id + '"></div>' +
+                    '<div id="analysis-' + node.id + '"></div>' +
+                '</div>' +
+                '<div id="children-' + node.id + '"></div>';
+    
+            container.appendChild(nodeElement);
+    
+            if (node.steps) {
+                renderSteps(node.id, node.steps);
+            }
+            if (node.analysis) {
+                renderAnalysis(node.id, node.analysis);
+            }
+    
+            if (node.children.length > 0) {
+                const childrenContainer = document.getElementById('children-' + node.id);
+                if (childrenContainer) {
+                    node.children.forEach(function(child) {
+                        renderNode(child, childrenContainer);
+                    });
+                }
+            }
+        }
+    
+        function renderSteps(nodeId, steps) {
+            const container = document.getElementById('steps-' + nodeId);
+            if (!container) return;
+            
+            let stepsHTML = '<div class="node-steps"><h4>📋 AI-Generated Steps</h4><ul>';
+            steps.forEach(function(step, i) {
+                stepsHTML += '<li>Step ' + (i + 1) + ': ' + step + '</li>';
+            });
+            stepsHTML += '</ul></div>';
+            
+            container.innerHTML = stepsHTML;
+        }
+    
+        function renderAnalysis(nodeId, analysis) {
+            const container = document.getElementById('analysis-' + nodeId);
+            if (!container) return;
+            
+            container.innerHTML = 
+                '<div class="node-analysis">' +
+                    '<h4>🔍 AI Analysis</h4>' +
+                    '<p>' + analysis + '</p>' +
+                '</div>';
+        }
+    
+        async function checkApiStatus() {
+            console.log('🔍 Checking API status...');
+            try {
+                const response = await fetch(API_BASE_URL + '/status');
+                console.log('API status response:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('API status data:', data);
+                    
+                    if (response.status === 200) {
+                        isApiConnected = true;
+                        showMessage('✅ Connected to LLaMA API', 'success');
+                        console.log('API connected successfully');
+                    } else {
+                        isApiConnected = false;
+                        showMessage('⚠️ API not connected - using demo mode', 'info');
+                        console.log('API not connected, using demo mode');
+                    }
+                } else {
+                    isApiConnected = false;
+                    showMessage('⚠️ API error - using demo mode', 'info');
+                    console.log('API error, status:', response.status);
+                }
+            } catch (error) {
+                console.error('API status check failed:', error);
+                isApiConnected = false;
+                showMessage('⚠️ Cannot reach API - using demo mode', 'info');
+            }
+        }
+    
+        // Node Operations
+        async function expandNode(nodeId) {
+            const node = findNode(nodeId);
+            if (!node) return;
+    
+            if (node.children.length > 0) {
+                showMessage('This node is already expanded', 'info');
+                return;
+            }
+    
+            console.log('🌱 Expanding node:', node.content);
+    
+            const button = document.querySelector('[onclick="expandNode(' + nodeId + ')"]');
+            const originalHTML = button.innerHTML;
+            button.innerHTML = '<span class="loading"></span> Expanding...';
+            button.disabled = true;
+    
+            try {
+                if (isApiConnected) {
+                    const response = await fetch(API_BASE_URL + '/expand', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ topic: node.content })
+                    });
+    
+                    if (response.ok) {
+                        const data = await response.json();
+    
+                        if (data.success) {
+                            node.children = data.subtopics.map(function(subtopic) {
+                                return {
+                                    id: nodeIdCounter++,
+                                    content: subtopic,
+                                    level: node.level + 1,
+                                    children: [],
+                                    steps: null,
+                                    analysis: null
+                                };
+                            });
+    
+                            renderMindmap();
+                            updateStats();
+                            showMessage('✅ Expanded with AI responses!', 'success');
+                        } else {
+                            showMessage('❌ ' + (data.error || 'Failed to expand'), 'error');
+                        }
+                    } else {
+                        showMessage('❌ Expand failed: ' + response.status, 'error');
+                    }
+                } else {
+                    // Demo mode
+                    const dummyChildren = [
+                        'Subtopic 1: ' + node.content + ' basics',
+                        'Subtopic 2: ' + node.content + ' advanced',
+                        'Subtopic 3: ' + node.content + ' practice',
+                        'Subtopic 4: ' + node.content + ' tools',
+                        'Subtopic 5: ' + node.content + ' resources'
+                    ];
+    
+                    node.children = dummyChildren.map(function(subtopic) {
+                        return {
+                            id: nodeIdCounter++,
+                            content: subtopic,
+                            level: node.level + 1,
+                            children: [],
+                            steps: null,
+                            analysis: null
+                        };
+                    });
+    
+                    renderMindmap();
+                    updateStats();
+                    showMessage('✅ Expanded (demo mode)', 'success');
+                }
+            } catch (error) {
+                console.error('Expand error:', error);
+                showMessage('❌ Error expanding topic', 'error');
+            } finally {
+                button.innerHTML = originalHTML;
+                button.disabled = false;
+            }
+        }
+    
+        async function generateSteps(nodeId) {
+            const node = findNode(nodeId);
+            if (!node) return;
+    
+            console.log('📋 Generating steps for:', node.content);
+    
+            const button = document.querySelector('[onclick="generateSteps(' + nodeId + ')"]');
+            const originalHTML = button.innerHTML;
+            button.innerHTML = '<span class="loading"></span> Generating...';
+            button.disabled = true;
+    
+            try {
+                if (isApiConnected) {
+                    const response = await fetch(API_BASE_URL + '/breakdown', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ topic: node.content })
+                    });
+    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.success) {
+                            node.steps = data.steps;
+                            renderSteps(nodeId, data.steps);
+                            updateStats();
+                            showMessage('✅ Generated AI steps!', 'success');
+                        } else {
+                            showMessage('❌ ' + data.error, 'error');
+                        }
+                    } else {
+                        showMessage('❌ Steps failed: ' + response.status, 'error');
+                    }
+                } else {
+                    // Demo mode
+                    const dummySteps = [
+                        'Research and understand ' + node.content,
+                        'Plan your approach to ' + node.content,
+                        'Gather necessary tools and resources',
+                        'Start with basic implementation',
+                        'Test and refine your work',
+                        'Document your progress and results'
+                    ];
+    
+                    node.steps = dummySteps;
+                    renderSteps(nodeId, dummySteps);
+                    updateStats();
+                    showMessage('✅ Generated steps (demo mode)', 'success');
+                }
+            } catch (error) {
+                console.error('Steps error:', error);
+                showMessage('❌ Error generating steps', 'error');
+            } finally {
+                button.innerHTML = originalHTML;
+                button.disabled = false;
+            }
+        }
+    
+        async function analyzeNode(nodeId) {
+            const node = findNode(nodeId);
+            if (!node) return;
+    
+            console.log('🔍 Analyzing node:', node.content);
+    
+            const button = document.querySelector('[onclick="analyzeNode(' + nodeId + ')"]');
+            const originalHTML = button.innerHTML;
+            button.innerHTML = '<span class="loading"></span> Analyzing...';
+            button.disabled = true;
+    
+            try {
+                if (isApiConnected) {
+                    const response = await fetch(API_BASE_URL + '/analyze', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ topic: node.content })
+                    });
+    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.success) {
+                            node.analysis = data.analysis;
+                            renderAnalysis(nodeId, data.analysis);
+                            updateStats();
+                            showMessage('✅ AI analysis completed!', 'success');
+                        } else {
+                            showMessage('❌ ' + data.error, 'error');
+                        }
+                    } else {
+                        showMessage('❌ Analysis failed: ' + response.status, 'error');
+                    }
+                } else {
+                    // Demo mode
+                    const dummyAnalysis = 'This topic "' + node.content + '" involves understanding key concepts, practical application, and continuous learning. It requires dedication, proper resources, and a structured approach to achieve mastery. Consider breaking it down into smaller, manageable tasks and setting realistic timelines for completion.';
+    
+                    node.analysis = dummyAnalysis;
+                    renderAnalysis(nodeId, dummyAnalysis);
+                    updateStats();
+                    showMessage('✅ Analysis completed (demo mode)', 'success');
+                }
+            } catch (error) {
+                console.error('Analysis error:', error);
+                showMessage('❌ Error analyzing topic', 'error');
+            } finally {
+                button.innerHTML = originalHTML;
+                button.disabled = false;
+            }
+        }
+    
+        function collapseNode(nodeId) {
+            const node = findNode(nodeId);
+            if (!node) return;
+            
+            node.children = [];
+            renderMindmap();
+            updateStats();
+            showMessage('Collapsed node', 'info');
+        }
+    
+        function clearMindmap() {
+            mindmapData = [];
+            nodeIdCounter = 1;
+            
+            const contentTitle = document.getElementById('contentTitle');
+            if (contentTitle) {
+                contentTitle.textContent = 'Ready to Create Your MindMap';
+            }
+            
+            const mobileInput = document.getElementById('mobileTopicInput');
+            const desktopInput = document.getElementById('topicInput');
+            
+            if (mobileInput) mobileInput.value = '';
+            if (desktopInput) desktopInput.value = '';
+            
+            renderMindmap();
+            updateStats();
+            showMessage('MindMap cleared', 'info');
+        }
+    
+        function findNode(nodeId) {
+            function search(nodes) {
+                for (const node of nodes) {
+                    if (node.id === nodeId) return node;
+                    const found = search(node.children);
+                    if (found) return found;
+                }
+                return null;
+            }
+            return search(mindmapData);
+        }
+    
+        function updateStats() {
+            let totalNodes = 0;
+            let maxLevel = 0;
+            let totalSteps = 0;
+            let totalAnalyses = 0;
+    
+            function countStats(nodes) {
+                for (const node of nodes) {
+                    totalNodes++;
+                    maxLevel = Math.max(maxLevel, node.level);
+                    if (node.steps) totalSteps++;
+                    if (node.analysis) totalAnalyses++;
+                    countStats(node.children);
+                }
+            }
+    
+            countStats(mindmapData);
+    
+            const totalNodesEl = document.getElementById('totalNodes');
+            const maxLevelEl = document.getElementById('maxLevel');
+    
+            if (totalNodesEl) totalNodesEl.textContent = totalNodes;
+            if (maxLevelEl) maxLevelEl.textContent = maxLevel;
+        }
+    
+        function showMessage(message, type) {
+            console.log('Message: ' + message + ' (' + type + ')');
+            
+            const div = document.createElement('div');
+            div.className = 'message ' + type;
+            div.textContent = message;
+            
+            const contentArea = document.querySelector('.content-area');
+            if (contentArea) {
+                contentArea.insertBefore(div, contentArea.firstChild);
+                
+                setTimeout(function() {
+                    if (div.parentNode) {
+                        div.remove();
+                    }
+                }, 3000);
+            }
+        }
+    
+        // Export Functions
+        function exportAsTxt() {
+            if (mindmapData.length === 0) {
+                showMessage('No mindmap data to export', 'error');
+                return;
+            }
+    
+            console.log('📄 Exporting as TXT...');
+            
+            let txtContent = 'MINDMAP AI EXPORT\n';
+            txtContent += '=================\n\n';
+            txtContent += 'Generated: ' + new Date().toLocaleString() + '\n\n';
+    
+            function nodeToText(node, indent) {
+                let text = '';
+                const prefix = '  '.repeat(indent);
+                
+                text += prefix + '• ' + node.content + ' (Level ' + node.level + ')\n';
+                
+                if (node.steps && node.steps.length > 0) {
+                    text += prefix + '  📋 Steps:\n';
+                    node.steps.forEach(function(step, i) {
+                        text += prefix + '    ' + (i + 1) + '. ' + step + '\n';
+                    });
+                    text += '\n';
+                }
+                
+                if (node.analysis) {
+                    text += prefix + '  🔍 Analysis:\n';
+                    text += prefix + '    ' + node.analysis + '\n\n';
+                }
+                
+                if (node.children && node.children.length > 0) {
+                    node.children.forEach(function(child) {
+                        text += nodeToText(child, indent + 1);
+                    });
+                }
+                
+                return text;
+            }
+    
+            mindmapData.forEach(function(rootNode) {
+                txtContent += nodeToText(rootNode, 0);
+            });
+    
+            txtContent += '\n\nExported from MindMap AI\n';
+            txtContent += 'Total Nodes: ' + countTotalNodes() + '\n';
+    
+            downloadFile(txtContent, 'mindmap-' + getCurrentTimestamp() + '.txt', 'text/plain');
+            showMessage('✅ Exported as TXT file', 'success');
+        }
+    
+        function exportAsJson() {
+            if (mindmapData.length === 0) {
+                showMessage('No mindmap data to export', 'error');
+                return;
+            }
+    
+            console.log('📋 Exporting as JSON...');
+            
+            const exportData = {
+                metadata: {
+                    title: 'MindMap AI Export',
+                    generated: new Date().toISOString(),
+                    version: '1.0',
+                    totalNodes: countTotalNodes()
+                },
+                mindmap: mindmapData
+            };
+    
+            const jsonContent = JSON.stringify(exportData, null, 2);
+            downloadFile(jsonContent, 'mindmap-' + getCurrentTimestamp() + '.json', 'application/json');
+            showMessage('✅ Exported as JSON file', 'success');
+        }
+    
+        function downloadFile(content, filename, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            URL.revokeObjectURL(url);
+        }
+    
+        function getCurrentTimestamp() {
+            const now = new Date();
+            return now.getFullYear() + 
+                   ('0' + (now.getMonth() + 1)).slice(-2) + 
+                   ('0' + now.getDate()).slice(-2) + '-' +
+                   ('0' + now.getHours()).slice(-2) + 
+                   ('0' + now.getMinutes()).slice(-2);
+        }
+    
+        function countTotalNodes() {
+            let count = 0;
+            function countNodes(nodes) {
+                for (const node of nodes) {
+                    count++;
+                    countNodes(node.children);
+                }
+            }
+            countNodes(mindmapData);
+            return count;
+        }
+    
+        // Close menu function for global access
+        function closeMenu() {
+            const sideMenu = document.getElementById('sideMenu');
+            const menuOverlay = document.getElementById('menuOverlay');
+            
+            if (sideMenu) sideMenu.classList.remove('open');
+            if (menuOverlay) menuOverlay.classList.remove('active');
+        }
+    </script>
+</body>
+</html>
+            
